@@ -34,24 +34,17 @@ def assign_rooms_to_requests(rooms, requests, floor_weight=1, space_weight=1, re
     # Define room assignment variables based on request and time slot overlap
     for r_id, room in enumerate(rooms):
         for req_id, request in enumerate(requests):
-            for t_id, time_slot in enumerate(request['time_slots']):
-                # Check if room meets request's capacity
-                if request["type"] in room["type_capacity"] and room["type_capacity"][request["type"]] >= request["num_people"]:
-                    # Define the room assignment variable for this request, room, and time slot
-                    room_vars[(r_id, req_id, t_id)] = solver.BoolVar(f"room_{r_id}_req_{req_id}_time_{t_id}")
-                    
-                    # Collect valid rooms for the current request (based on capacity and time slot)
-                    if req_id not in valid_rooms_for_request:
-                        valid_rooms_for_request[req_id] = []
-                    valid_rooms_for_request[req_id].append(room_vars[(r_id, req_id, t_id)])
-
-    # Debugging: Print the valid rooms for each request
-    for req_id in valid_rooms_for_request:
-        valid_room_names = []
-        for room_var in valid_rooms_for_request[req_id]:
-            r_id, req_id, t_id = room_var.name().split('_')[1], room_var.name().split('_')[3], room_var.name().split('_')[5]
-            valid_room_names.append(rooms[int(r_id)]["name"])  # Get room name based on id
-        print(f"Available rooms for request {req_id}: {valid_room_names}")
+            if room["name"] in request["rooms_to_consider"]:
+                for t_id, time_slot in enumerate(request['time_slots']):
+                    # Check if room meets request's capacity
+                    if request["type"] in room["type_capacity"] and room["type_capacity"][request["type"]] >= request["num_people"]:
+                        # Define the room assignment variable for this request, room, and time slot
+                        room_vars[(r_id, req_id, t_id)] = solver.BoolVar(f"room_{r_id}_req_{req_id}_time_{t_id}")
+                        
+                        # Collect valid rooms for the current request (based on capacity and time slot)
+                        if req_id not in valid_rooms_for_request:
+                            valid_rooms_for_request[req_id] = []
+                        valid_rooms_for_request[req_id].append(room_vars[(r_id, req_id, t_id)])
 
     # Add constraint: each request can only be assigned one room at a time
     for req_id, valid_rooms in valid_rooms_for_request.items():
@@ -86,17 +79,31 @@ def assign_rooms_to_requests(rooms, requests, floor_weight=1, space_weight=1, re
                             solver.Add(aux_var <= room_vars[(r_id, req_id, t_id)])
                             solver.Add(aux_var <= room_vars[(other_r_id, req_id, t_id)])
                             solver.Add(aux_var >= room_vars[(r_id, req_id, t_id)] + room_vars[(other_r_id, req_id, t_id)] - 1)
-                            distance_terms.append(aux_var * floor_distance * floor_weight)
+                            distance_terms.append((aux_var, floor_distance, floor_weight))
 
                     # Calculate unused space (room capacity - number of people)
                     unused_space = room["type_capacity"][request["type"]] - request["num_people"]
-                    unused_space_terms.append(room_vars[(r_id, req_id, t_id)] * unused_space * space_weight)
+                    unused_space_terms.append((room_vars[(r_id, req_id, t_id)], unused_space, space_weight))
 
                     # Add reuse term to favor reusing rooms
-                    reuse_terms.append(room_vars[(r_id, req_id, t_id)] * reuse_weight)
+                    reuse_terms.append((room_vars[(r_id, req_id, t_id)], reuse_weight))
 
     # Add an objective function to minimize the floor distance, unused space, and favor reusing rooms
-    solver.Minimize(solver.Sum(distance_terms) + solver.Sum(unused_space_terms) - solver.Sum(reuse_terms))
+    solver.Minimize(solver.Sum(aux_var * floor_distance * floor_weight for aux_var, floor_distance, floor_weight in distance_terms) +
+                    solver.Sum(var * unused_space * space_weight for var, unused_space, space_weight in unused_space_terms) -
+                    solver.Sum(var * reuse_weight for var, reuse_weight in reuse_terms))
+
+    # Debug: Print the objective function terms before solving
+    print("Objective function terms:")
+    print("Floor distance terms:")
+    for aux_var, floor_distance, floor_weight in distance_terms:
+        print(f"{aux_var} * {floor_distance} * {floor_weight}")
+    print("Unused space terms:")
+    for var, unused_space, space_weight in unused_space_terms:
+        print(f"{var} * {unused_space} * {space_weight}")
+    print("Reuse terms:")
+    for var, reuse_weight in reuse_terms:
+        print(f"{var} * {reuse_weight}")
 
     # Solve the problem
     status = solver.Solve()
@@ -109,6 +116,7 @@ def assign_rooms_to_requests(rooms, requests, floor_weight=1, space_weight=1, re
             if room_vars[(r_id, req_id, t_id)].solution_value() == 1:
                 solution = {
                     "request_id": req_id,
+                    "request_no": req_id + 1,
                     "room_name": rooms[r_id]['name'],
                     "time_slot": requests[req_id]['time_slots'][t_id]
                 }
