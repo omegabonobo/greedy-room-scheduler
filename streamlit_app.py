@@ -75,9 +75,13 @@ if st.button("Submit"):
     resolved_solutions = assign_rooms_to_requests(rooms, requests, floor_weight=1, space_weight=0.5)
     df_solutions = pd.DataFrame(resolved_solutions)
     df_solutions_show= df_solutions.copy()
-    df_solutions_show = df_solutions_show[['request_no','time_slot','room_name']]
+    df_solutions_show = df_solutions_show[['request_no','time_slot','room_name','room_rental']]
     df_solutions_show = df_solutions_show.sort_values(by=['request_no'], ascending=True)
+
+    # Format room_rental as currency
+    df_solutions_show['room_rental'] = df_solutions_show['room_rental'].apply(lambda x: f"${x:,.2f}" if pd.notnull(x) else x)
     st.dataframe(df_solutions_show)
+    
     # Example usage of the collected requests
     # You can replace this with your actual function call
     # assign_rooms_to_requests(rooms, requests, floor_weight=1, space_weight=0.5)

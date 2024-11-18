@@ -10,6 +10,7 @@ with open('IHG_Montreal_Rooms.csv') as csvfile:
         room["name"] = row["ROOM_NAME"]
         room["type_capacity"] = {key.split("_")[1]: int(row[key]) if row[key].isdigit() else 0 for key in row if key.startswith("CAPACITY_")}
         room["floor"] = int(row["FLOOR"]) if row["FLOOR"].isdigit() else 0
+        room["room_rental"] = int(row["ROOM_RENTAL"]) if row["ROOM_RENTAL"].isdigit() else 0
         rooms.append(room)
 
 def assign_rooms_to_requests(rooms, requests, floor_weight=1, space_weight=1, reuse_weight=1):
@@ -118,12 +119,17 @@ def assign_rooms_to_requests(rooms, requests, floor_weight=1, space_weight=1, re
                     "request_id": req_id,
                     "request_no": req_id + 1,
                     "room_name": rooms[r_id]['name'],
-                    "time_slot": requests[req_id]['time_slots'][t_id]
+                    "time_slot": requests[req_id]['time_slots'][t_id],
+                    "room_rental": rooms[r_id]['room_rental']
                 }
                 solutions.append(solution)
                 print(f"Request {req_id} assigned to Room {rooms[r_id]['name']} for time slot {requests[req_id]['time_slots'][t_id]}")
     else:
         print("No solution found.")
+
+    # Ensure the solution DataFrame always contains the expected columns
+    if not solutions:
+        solutions = [{"request_id": None, "request_no": None, "room_name": None, "time_slot": None, "room_rental": None}]
 
     # Return the final solutions
     return solutions
